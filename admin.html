@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>HA Trader | Wholesale Dashboard Control</title>
+</head>
+<body class="bg-slate-900 font-sans text-slate-100 min-h-screen">
+
+    <nav class="bg-slate-950 border-b-2 border-red-600 px-8 py-4 flex justify-between items-center shadow-lg">
+        <div>
+            <span class="bg-red-600 text-white font-black px-3 py-1 rounded-lg border border-red-400 mr-2">HA</span>
+            <span class="text-xl font-black uppercase tracking-wider text-white">Live Operations Hub</span>
+        </div>
+        <button id="logoutBtn" class="bg-slate-800 border border-slate-700 hover:bg-red-600 px-4 py-1.5 rounded-lg text-xs font-bold transition">Log Out Dashboard</button>
+    </nav>
+
+    <!-- AUTH GUARD BLOCK LAYOUT -->
+    <div id="adminAuthBlock" class="max-w-md mx-auto mt-20 p-8 bg-slate-950 border-2 border-slate-800 rounded-3xl shadow-2xl">
+        <h2 class="text-xl font-black text-center uppercase mb-1 text-white">Admin Validation</h2>
+        <p class="text-xs text-slate-500 text-center mb-6 font-bold uppercase tracking-wider">Access Restrict Channel</p>
+        <div id="authError" class="hidden mb-4 p-3 bg-red-950 border border-red-800 text-red-400 text-xs font-bold rounded-xl"></div>
+        <form id="adminLoginForm" class="space-y-4">
+            <input type="email" id="adminEmail" placeholder="admin@hatrader.com" required class="w-full bg-slate-900 border-2 border-slate-800 rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-red-500">
+            <input type="password" id="adminPassword" placeholder="••••••••" required class="w-full bg-slate-900 border-2 border-slate-800 rounded-xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-red-500">
+            <button type="submit" class="w-full bg-red-600 text-white font-black py-3.5 rounded-xl text-sm uppercase tracking-wide shadow-md">Open Command Interface</button>
+        </form>
+    </div>
+
+    <!-- MAIN OPERATIONS DATA CONTROLS INTERFACE -->
+    <main id="adminDashboardContent" class="max-w-6xl mx-auto px-6 py-12 hidden">
+        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div>
+                <h2 class="text-3xl font-black uppercase tracking-tight text-white">Live Invoice Registry</h2>
+                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Real-time dynamic Firestore processing stream</p>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 px-5 py-3 rounded-2xl flex items-center space-x-6 shadow-inner">
+                <div class="text-xs font-bold uppercase text-slate-400">Total Registered Orders: <span id="metricCount" class="text-lg font-black text-yellow-400 block mt-0.5">0</span></div>
+            </div>
+        </div>
+
+        <!-- OUTBOUND CARDS CONTROLLER STACK CONTAINER -->
+        <div id="masterOrdersStream" class="grid grid-cols-1 gap-6">
+            <div class="text-center py-12 text-slate-500 font-bold uppercase text-sm tracking-wider animate-pulse">Initializing Stream Secure Handshakes...</div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCKBM6BquwvBXzvvO183_flZSnTO43L90E",
+            authDomain: "ah-trader.firebaseapp.com",
+            projectId: "ah-trader",
+            storageBucket: "ah-trader.firebasestorage.app",
+            messagingSenderId: "87860670785",
+            appId: "1:87860670785:web:6879dca9b8de5963c9b1c0"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const adminAuthBlock = document.getElementById('adminAuthBlock');
+        const adminDashboardContent = document.getElementById('adminDashboardContent');
+        const adminLoginForm = document.getElementById('adminLoginForm');
+        const authError = document.getElementById('authError');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const masterOrdersStream = document.getElementById('masterOrdersStream');
+        const metricCount = document.getElementById('metricCount');
+
+        let unsubscribeStream = null;
+
+        adminLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            signInWithEmailAndPassword(auth, document.getElementById('adminEmail').value.trim(), document.getElementById('adminPassword').value)
+                .catch(err => { authError.textContent = err.message; authError.classList.remove('hidden'); });
+        });
+
+        logoutBtn.addEventListener('click', () => signOut(auth));
+
+        // CONTROLLER LIVE SNAPSHOT ENGINE STREAM
+        function connectLiveOrderPipeline() {
+            const orderRef = collection(db, "orders");
+            const orderQuery = query(orderRef, orderBy("createdAt", "desc"));
+
+            unsubscribeStream = onSnapshot(orderQuery, (snapshot) => {
+                masterOrdersStream.innerHTML = "";
+                metricCount.textContent = snapshot.size;
+
+                if (snapshot.empty) {
+                    masterOrdersStream.innerHTML = `<div class="bg-slate-950 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 font-bold uppercase tracking-wide text-xs">No entries registered inside database storage fields yet.</div>`;
+                    return;
+                }
+
+                snapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    const orderId = docSnap.id;
+                    const date = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString('en-PK', {timeZone: 'Asia/Karachi'}) : 'Pending Timestamp...';
+                    
+                    const card = document.createElement('div');
+                    card.className = `p-6 rounded-2xl border-2 transition shadow-xl bg-slate-950 ${data.status === 'Dispatched' ? 'border-slate-800 opacity-60' : 'border-red-900/50'}`;
+                    
+                    let itemsHtml = "";
+                    data.items.forEach(i => {
+                        itemsHtml += `<div class="flex justify-between border-b border-slate-900 py-1.5 text-xs font-mono text-slate-300"><span>📦 ${i.name} (x${i.quantity} Ctn)</span><span>Rs. ${i.subtotal}</span></div>`;
+                    });
+
+                    card.innerHTML = `
+                        <div class="flex flex-wrap justify-between items-start gap-4 border-b border-slate-800 pb-4 mb-4">
+                            <div>
+                                <span class="bg-slate-800 text-slate-300 font-mono text-[10px] px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all">${orderId}</span>
+                                <div class="text-xs text-slate-400 font-bold mt-1.5">🕒 Time: <span class="text-slate-200 font-medium">${date}</span></div>
+                                <div class="text-xs text-slate-400 font-bold">👤 Retailer Account: <span class="text-slate-200 font-medium">${data.buyerEmail}</span></div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-black uppercase px-3 py-1 rounded-lg border tracking-wider ${data.status === 'Dispatched' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-amber-950 text-yellow-400 border-yellow-800 animate-pulse'}">${data.status}</span>
+                                <select onchange="updateOrderStatus('${orderId}', this.value)" class="bg-slate-900 border border-slate-700 rounded-lg p-1 text-xs font-bold focus:outline-none text-white">
+                                    <option value="Pending" ${data.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                    <option value="Dispatched" ${data.status === 'Dispatched' ? 'selected' : ''}>Dispatched</option>
+                                </select>
+                                <button onclick="deleteOrderRecord('${orderId}')" class="bg-red-950 hover:bg-red-600 border border-red-800 text-red-200 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold transition">&times; Archive</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-2">Itemized Invoicing</h4>
+                                <div class="bg-slate-900 p-3 rounded-xl border border-slate-800/80">${itemsHtml}</div>
+                                <div class="flex justify-between items-center mt-3 px-1"><span class="text-xs font-bold text-slate-400">Aggregated Total Bill:</span><span class="text-lg font-black text-yellow-400">Rs. ${data.totalValue}</span></div>
+                            </div>
+                            <div class="space-y-2 bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-xs font-medium text-slate-300">
+                                <h4 class="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Retail Logistics Profile</h4>
+                                <div>📍 <span class="font-bold text-slate-400">Address:</span> ${data.address}</div>
+                                <div>📞 <span class="font-bold text-slate-400">Phone Contact:</span> <span class="text-white font-bold tracking-wide underline select-all">${data.phone}</span></div>
+                                <div class="pt-1">💳 <span class="font-bold text-slate-400">Method Pathway:</span> <span class="bg-slate-800 text-slate-200 font-mono px-1.5 py-0.5 rounded text-[11px] font-bold border border-slate-700">${data.paymentMethod}</span></div>
+                            </div>
+                        </div>`;
+                    masterOrdersStream.appendChild(card);
+                });
+            }, (err) => { alert("Active stream error interface: " + err.message); });
+        }
+
+        // CONTROL PANEL CRUD OPERATIONS FUNCTIONS
+        window.updateOrderStatus = async function(id, statusValue) {
+            try { await updateDoc(doc(db, "orders", id), { status: statusValue }); } 
+            catch(e) { alert("Status execution update fault: " + e.message); }
+        };
+
+        window.deleteOrderRecord = async function(id) {
+            if(confirm("Permanently delete and archive this wholesale order reference history?")) {
+                try { await deleteDoc(doc(db, "orders", id)); } 
+                catch(e) { alert("Archive removal error payload: " + e.message); }
+            }
+        };
+
+        // GLOBAL APPLICATION SECURE GATE ROUTER
+        onAuthStateChanged(auth, (user) => {
+            if (user && user.email === 'admin@hatrader.com') {
+                adminAuthBlock.classList.add('hidden');
+                adminDashboardContent.classList.remove('hidden');
+                connectLiveOrderPipeline();
+            } else {
+                adminAuthBlock.classList.remove('hidden');
+                adminDashboardContent.classList.add('hidden');
+                if (unsubscribeStream) { unsubscribeStream(); unsubscribeStream = null; }
+            }
+        });
+    </script>
+</body>
+</html>
